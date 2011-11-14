@@ -45,6 +45,14 @@ String::capitalizeFirstLetter = -> @charAt(0).toUpperCase() + @slice(1)
 String::removeCurrencyDescriptor = -> @replace(/#\d+;/g, "").replace( /[^\d,.]/g, "" )
 
 
+###
+--------------------------------------------------------------
+    @CookieStore
+
+    * Write and Read from the cookie
+--------------------------------------------------------------
+###
+
 class CookieStore
 
   _config =
@@ -78,7 +86,6 @@ Shopify.Customizr = (($) ->
 
   config =
     lineItemFormatInTemplatesPlainText : "%qx %t for %p each"
-    lineItemFormatInTemplatesHTML      : "%qx %t for %p each"
     labelFormatOnCartPage              : "%s: "
     showLabelOnCartPage                : true
     useNativeValidation                : null
@@ -89,11 +96,12 @@ Shopify.Customizr = (($) ->
     requiredText                       : "This field is required"
     selector                           : null
     noLabel                            : "No label"
+    renderAttributes                   : null
   
   # itemSpec will be loaded from cookie
-  itemSpec = {}
-  p        = false
-  m        = false
+  itemSpec     = {}
+  isToCheckOut = false
+  m            = false
   
   # Setting up cookie
   cookieStore = new CookieStore()
@@ -197,25 +205,25 @@ Shopify.Customizr = (($) ->
   # Checking required field
   isRequired = (q) ->
     q.attr("required") or q.is(".required")
-  
 
   # Returning the attributes in the specified format
-  renderAttributes = (attributes) ->
+  renderAttributes = (attributes, isForNote = false) ->
+    if config.renderAttributes
+      s = config.renderAttributes(attributes, isForNote)
+    else
+      s = ""
+      if typeof attributes.length == "number"
 
-    s = ""
-    if typeof attributes.length == "number"
-
-      # Loop though elements
-      for attr in attributes
-        s += config.attributeSeparator
-        # if it is set to show label on cart page
-        # and the label is not No Label
-        if config.showLabelOnCartPage and attr.label != config.noLabel
-          s += config.labelFormatOnCartPage.replace("%s", attr.label)
-        s += attr.value
-    s
- 
-
+        # Loop though elements
+        for attr in attributes
+          s += config.attributeSeparator
+          # if it is set to show label on cart page
+          # and the label is not No Label
+          if config.showLabelOnCartPage and attr.label != config.noLabel
+            s += config.labelFormatOnCartPage.replace("%s", attr.label)
+          s += attr.value
+      s
+  
   ###
   --------------------------------------------------------------
       @updateQuantity
@@ -238,7 +246,8 @@ Shopify.Customizr = (($) ->
         if updatedQty == 0
           # then remove from cookie
           itemSpec[variantId].splice( t, 1 )
-          itemSpec[variantId] = undefined  if itemSpec[variantId].length == 0
+          if itemSpec[variantId].length is 0
+            itemSpec[variantId] = undefined
         # Then write to cookie
         cookieStore.write itemSpec
         break
@@ -294,7 +303,7 @@ Shopify.Customizr = (($) ->
           itemQty = item.quantity
 
           # No idea why this is overriden...
-          D = "<p>#{ renderAttributes(item.attributes) }</p>"
+          D = "<p>#{ renderAttributes(item.attributes, true) }</p>"
           D = "#{ variantTitle } #{ $(D).text() }"
           data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
           variantQty = variantQty - itemQty
@@ -302,21 +311,6 @@ Shopify.Customizr = (($) ->
         if variantQty > 0
           data += template.replace("%q", variantQty).replace("%t", variantTitle).replace("%p", noDescriptorPrice)
 
-        data += "&"
-
-        variantQty = w.quantity
-
-        data += "attributes[#{ variantTitle }HTML]="
-
-        $.each itemSpec[variantId], (C, item) ->
-
-          itemQty = item.quantity
-          D = "#{ variantTitle } #{ renderAttributes(item.attributes) }"
-          data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
-          variantQty = variantQty - itemQty
-
-        if variantQty > 0
-          data += template.replace("%q", variantQty).replace("%t", variantTitle).replace("%p", formattedPrice)
         data += "&"
       else
         data += "attributes[#{variantTitle}]=&"
@@ -328,6 +322,7 @@ Shopify.Customizr = (($) ->
       data     : data
       dataType : "json"
       success  : ->
+        console.log arguments
         $("form[action=\"/cart\"]").attr("action", "/checkout").get(0).submit()
 
     # Update it.
@@ -355,7 +350,7 @@ Shopify.Customizr = (($) ->
         $submitButton.removeAttr "onclick"
 
         $submitButton.click (u) ->
-
+          
           variantId = $addToCartForm.find("[name=id]").val()
           itemQty   = parseInt($addToCartForm.find("[name=quantity]").val(), 10) or 1
           uniqueId  = (new Date()).getTime()
@@ -376,6 +371,7 @@ Shopify.Customizr = (($) ->
                 .not("[name^=\"id\"]")
                 .not("[name=\"quantity\"]")
                 .not(".single-option-selector")
+                .not(".ignore")
 
             else
               $formFields = $(config.selector)
@@ -504,8 +500,8 @@ Shopify.Customizr = (($) ->
           variantTitle          = cartInfo[variantId].title
           variantPrice          = cartInfo[variantId].price
           variantLinePrice      = cartInfo[variantId].linePrice
-          removeLinkSelector = "[href^=\"/cart/change/\"], [onclick]"
-          inputSelector      = "#updates_" + variantId
+          removeLinkSelector    = "[href^=\"/cart/change/\"], [onclick]"
+          inputSelector         = "#updates_" + variantId
           
           $input             = $(inputSelector)
           
@@ -542,9 +538,9 @@ Shopify.Customizr = (($) ->
             # Check if the item info is valid
             if (typeof item == "object") and ( typeof item.quantity is "number" ) and ( item.quantity > 0 )
               uniqueId           = item.uniqueId
-              additionalAttrDOM  = renderAttributes(item.attributes)
               itemQty            = item.quantity
               $clonedWrapper     = $inputWrapper.clone(false).insertAfter($inputWrapper).hide()
+              additionalAttrDOM  = renderAttributes(item.attributes, no)
               $qtyInput          = $clonedWrapper.find("input[name^=updates]")
 
               # Change the id to uniqueId, then remove the name, and change it's value
@@ -595,7 +591,11 @@ Shopify.Customizr = (($) ->
               variantQty -= itemQty
 
               # renders the additional attributes
-              $clonedWrapper.find(":contains(#{ variantTitle }):last").get(0).innerHTML += additionalAttrDOM
+              unless config.appendTo
+                $clonedWrapper.find(":contains(#{ variantTitle }):last").get(0).innerHTML += additionalAttrDOM
+              else
+                $clonedWrapper.find(config.appendTo).append( additionalAttrDOM )
+                
               $subTotal = $clonedWrapper.find(":contains(#{ formattedPrice }):last")
 
               # Calculates the subtotoal and format it
@@ -624,7 +624,6 @@ Shopify.Customizr = (($) ->
             $inputWrapper.find(removeLinkSelector).removeAttr("onclick").unbind("click").bind "click",
               noCustomInput    : $noCustomInput
               originalQtyInput : $variantQtyInput
-
             , (e) ->
 
               e.stopImmediatePropagation()
@@ -660,12 +659,12 @@ Shopify.Customizr = (($) ->
         $("form[action=\"/cart\"] tr:has(:text):odd").addClass("even").removeClass "odd"
         $("form[action=\"/cart\"] tr:has(:text):even").addClass("odd").removeClass "even"
         
-        $("input[name=\"checkout\"], input[name=\"goto_pp\"], input[name=\"goto_gc\"]", 'input[name=update]').click ->
-          p = true
+        $("input[name=\"checkout\"], input[name=\"goto_pp\"], input[name=\"goto_gc\"]").click ->
+          isToCheckOut = true
         
         $("form[action=\"/cart\"]").submit (e) ->
           return false  if m
-          if p
+          if isToCheckOut
             e.preventDefault()
             m = true
             updateCartInfo( cartInfo )
@@ -684,6 +683,12 @@ Shopify.Customizr = (($) ->
     itemSpec = {}
   
 
+  ###
+  --------------------------------------------------------------
+      @Inspector
+  --------------------------------------------------------------
+  ###
+  
   inspectAttributes: (u, s, q) ->
 
     t = (if typeof q == "string" then q else "  ")

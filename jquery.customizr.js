@@ -50,6 +50,13 @@
   String.prototype.removeCurrencyDescriptor = function() {
     return this.replace(/#\d+;/g, "").replace(/[^\d,.]/g, "");
   };
+  /*
+  --------------------------------------------------------------
+      @CookieStore
+  
+      * Write and Read from the cookie
+  --------------------------------------------------------------
+  */
   CookieStore = (function() {
     var _config;
     _config = {
@@ -83,10 +90,9 @@
   ----------------------------------------------
   */
   Shopify.Customizr = (function($) {
-    var a, calcSubTotal, checkCurrency, config, cookieStore, e, getLabel, isRequired, itemSpec, m, p, renderAttributes, updateCartInfo, updateQuantity, validateField;
+    var a, calcSubTotal, checkCurrency, config, cookieStore, e, getLabel, isRequired, isToCheckOut, itemSpec, m, renderAttributes, updateCartInfo, updateQuantity, validateField;
     config = {
       lineItemFormatInTemplatesPlainText: "%qx %t for %p each",
-      lineItemFormatInTemplatesHTML: "%qx %t for %p each",
       labelFormatOnCartPage: "%s: ",
       showLabelOnCartPage: true,
       useNativeValidation: null,
@@ -96,10 +102,11 @@
       requiredSelect: "Please select an option",
       requiredText: "This field is required",
       selector: null,
-      noLabel: "No label"
+      noLabel: "No label",
+      renderAttributes: null
     };
     itemSpec = {};
-    p = false;
+    isToCheckOut = false;
     m = false;
     cookieStore = new CookieStore();
     e = function(q, s) {
@@ -192,20 +199,27 @@
     isRequired = function(q) {
       return q.attr("required") || q.is(".required");
     };
-    renderAttributes = function(attributes) {
+    renderAttributes = function(attributes, isForNote) {
       var attr, s, _i, _len;
-      s = "";
-      if (typeof attributes.length === "number") {
-        for (_i = 0, _len = attributes.length; _i < _len; _i++) {
-          attr = attributes[_i];
-          s += config.attributeSeparator;
-          if (config.showLabelOnCartPage && attr.label !== config.noLabel) {
-            s += config.labelFormatOnCartPage.replace("%s", attr.label);
-          }
-          s += attr.value;
-        }
+      if (isForNote == null) {
+        isForNote = false;
       }
-      return s;
+      if (config.renderAttributes) {
+        return s = config.renderAttributes(attributes, isForNote);
+      } else {
+        s = "";
+        if (typeof attributes.length === "number") {
+          for (_i = 0, _len = attributes.length; _i < _len; _i++) {
+            attr = attributes[_i];
+            s += config.attributeSeparator;
+            if (config.showLabelOnCartPage && attr.label !== config.noLabel) {
+              s += config.labelFormatOnCartPage.replace("%s", attr.label);
+            }
+            s += attr.value;
+          }
+        }
+        return s;
+      }
     };
     /*
       --------------------------------------------------------------
@@ -282,26 +296,13 @@
           $.each(itemSpec[variantId], function(C, item) {
             var D, itemQty;
             itemQty = item.quantity;
-            D = "<p>" + (renderAttributes(item.attributes)) + "</p>";
+            D = "<p>" + (renderAttributes(item.attributes, true)) + "</p>";
             D = "" + variantTitle + " " + ($(D).text());
             data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice);
             return variantQty = variantQty - itemQty;
           });
           if (variantQty > 0) {
             data += template.replace("%q", variantQty).replace("%t", variantTitle).replace("%p", noDescriptorPrice);
-          }
-          data += "&";
-          variantQty = w.quantity;
-          data += "attributes[" + variantTitle + "HTML]=";
-          $.each(itemSpec[variantId], function(C, item) {
-            var D, itemQty;
-            itemQty = item.quantity;
-            D = "" + variantTitle + " " + (renderAttributes(item.attributes));
-            data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice);
-            return variantQty = variantQty - itemQty;
-          });
-          if (variantQty > 0) {
-            data += template.replace("%q", variantQty).replace("%t", variantTitle).replace("%p", formattedPrice);
           }
           return data += "&";
         } else {
@@ -314,6 +315,7 @@
         data: data,
         dataType: "json",
         success: function() {
+          console.log(arguments);
           return $("form[action=\"/cart\"]").attr("action", "/checkout").get(0).submit();
         }
       };
@@ -354,7 +356,7 @@
               if (variantId) {
                 attributes = [];
                 if (config.selector === null) {
-                  $formFields = $addToCartForm.find("input:enabled, select:enabled").not("input:submit").not("input:image").not("input:file").not("[name^=\"id\"]").not("[name=\"quantity\"]").not(".single-option-selector");
+                  $formFields = $addToCartForm.find("input:enabled, select:enabled").not("input:submit").not("input:image").not("input:file").not("[name^=\"id\"]").not("[name=\"quantity\"]").not(".single-option-selector").not(".ignore");
                 } else {
                   $formFields = $(config.selector);
                 }
@@ -506,9 +508,9 @@
                 item = items[_i];
                 if ((typeof item === "object") && (typeof item.quantity === "number") && (item.quantity > 0)) {
                   uniqueId = item.uniqueId;
-                  additionalAttrDOM = renderAttributes(item.attributes);
                   itemQty = item.quantity;
                   $clonedWrapper = $inputWrapper.clone(false).insertAfter($inputWrapper).hide();
+                  additionalAttrDOM = renderAttributes(item.attributes, false);
                   $qtyInput = $clonedWrapper.find("input[name^=updates]");
                   $qtyInput.attr("id", uniqueId).removeAttr("name").val(itemQty).bind("change", {
                     variantId: variantId,
@@ -549,7 +551,11 @@
                     return $("form[action=\"/cart\"]").get(0).submit();
                   });
                   variantQty -= itemQty;
-                  $clonedWrapper.find(":contains(" + variantTitle + "):last").get(0).innerHTML += additionalAttrDOM;
+                  if (!config.appendTo) {
+                    $clonedWrapper.find(":contains(" + variantTitle + "):last").get(0).innerHTML += additionalAttrDOM;
+                  } else {
+                    $clonedWrapper.find(config.appendTo).append(additionalAttrDOM);
+                  }
                   $subTotal = $clonedWrapper.find(":contains(" + formattedPrice + "):last");
                   calcSubTotal(variantId, uniqueId, variantPrice, $subTotal, isCurrencySet);
                   $clonedWrapper.show();
@@ -601,14 +607,14 @@
             $("form[action=\"/cart\"] li:has(:text):even").addClass("odd").removeClass("even");
             $("form[action=\"/cart\"] tr:has(:text):odd").addClass("even").removeClass("odd");
             $("form[action=\"/cart\"] tr:has(:text):even").addClass("odd").removeClass("even");
-            $("input[name=\"checkout\"], input[name=\"goto_pp\"], input[name=\"goto_gc\"]", 'input[name=update]').click(function() {
-              return p = true;
+            $("input[name=\"checkout\"], input[name=\"goto_pp\"], input[name=\"goto_gc\"]").click(function() {
+              return isToCheckOut = true;
             });
             return $("form[action=\"/cart\"]").submit(function(e) {
               if (m) {
                 return false;
               }
-              if (p) {
+              if (isToCheckOut) {
                 e.preventDefault();
                 m = true;
                 return updateCartInfo(cartInfo);
@@ -626,6 +632,11 @@
         cookieStore.destroy();
         return itemSpec = {};
       },
+      /*
+        --------------------------------------------------------------
+            @Inspector
+        --------------------------------------------------------------
+        */
       inspectAttributes: function(u, s, q) {
         var r, t, v, w;
         t = (typeof q === "string" ? q : "  ");
