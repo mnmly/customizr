@@ -1,12 +1,10 @@
 ###
---------------------------------------------------------------
    * Cookie plugin
    *
    * Copyright (c) 2006 Klaus Hartl (stilbuero.de)
    * Dual licensed under the MIT and GPL licenses:
    * http://www.opensource.org/licenses/mit-license.php
    * http://www.gnu.org/licenses/gpl.html
---------------------------------------------------------------
 ###
 
 jQuery.cookie = (key, value, options) ->
@@ -35,18 +33,15 @@ jQuery.cookie = (key, value, options) ->
 
 
 
-###
-----------------------------------------------
-    @String Utilities
-----------------------------------------------
-###
+#
+####String Utilities
+#
 
 String::capitalizeFirstLetter = -> @charAt(0).toUpperCase() + @slice(1)
 String::removeCurrencyDescriptor = -> @replace(/#\d+;/g, "").replace( /[^\d,.]/g, "" )
 
 
 ###
---------------------------------------------------------------
     @CookieStore
 
     * Write and Read from the cookie
@@ -76,6 +71,40 @@ class CookieStore
     $.cookie @name, null, _config
 
 
+ ###
+--------------------------------------------------------------
+    @LocalStore
+--------------------------------------------------------------
+###
+class LocalStore
+  constructor: (@name)->
+    # Grap the data from the cookie
+    # (only if the user add something to cart already )
+    tempCookieStore = new CookieStore()
+    cookieData      = tempCookieStore.read()
+    isEmpty = yes
+    for i of cookieData
+      isEmpty = no
+    unless isEmpty
+      @write(cookieData)
+    tempCookieStore.destroy()
+
+  write: (itemSpec)->
+    localStorage.setItem(@name, JSON.stringify(itemSpec))
+
+  read: ->
+    _itemSpec = {}
+    localData = localStorage.getItem(@name)
+    
+    if localData?
+      _itemSpec = JSON.parse(localData)
+    _itemSpec
+    JSON.parse( localStorage.getItem(@name) )
+
+  destroy: ->
+    localStorage.removeItem(@name)
+
+
 ###
 ----------------------------------------------
     @Shopify.Cusomizr
@@ -97,6 +126,7 @@ Shopify.Customizr = (($) ->
     selector                           : null
     noLabel                            : "No label"
     renderAttributes                   : null
+    
   
   # itemSpec will be loaded from cookie
   itemSpec     = {}
@@ -104,7 +134,7 @@ Shopify.Customizr = (($) ->
   m            = false
   
   # Setting up cookie
-  cookieStore = new CookieStore()
+  localStore = new LocalStore('shopify_product_customization')
 
   # Checking something...
   e = (q, s) ->
@@ -207,9 +237,9 @@ Shopify.Customizr = (($) ->
     q.attr("required") or q.is(".required")
 
   # Returning the attributes in the specified format
-  renderAttributes = (attributes, isForNote = false) ->
+  renderAttributes = (attributes, isForNote = false, isForCustomer = false) ->
     if config.renderAttributes
-      s = config.renderAttributes(attributes, isForNote)
+      s = config.renderAttributes(attributes, isForNote, isForCustomer)
     else
       s = ""
       if typeof attributes.length == "number"
@@ -249,7 +279,7 @@ Shopify.Customizr = (($) ->
           if itemSpec[variantId].length is 0
             itemSpec[variantId] = undefined
         # Then write to cookie
-        cookieStore.write itemSpec
+        localStore.write itemSpec
         break
       t++
 
@@ -286,6 +316,7 @@ Shopify.Customizr = (($) ->
   updateCartInfo = (cartInfo) ->
 
     data = ""
+    customerData = 'attributes[customer]='
 
     $.each cartInfo, (variantId, w) ->
       
@@ -301,11 +332,16 @@ Shopify.Customizr = (($) ->
         $.each itemSpec[variantId], (C, item) ->
 
           itemQty = item.quantity
-
+          
           # No idea why this is overriden...
           D = "<p>#{ renderAttributes(item.attributes, true) }</p>"
           D = "#{ variantTitle } #{ $(D).text() }"
           data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
+          
+          D = "<p>#{ renderAttributes(item.attributes, true, true) }</p>"
+          D = "#{ variantTitle } #{ $(D).text() }"
+          customerData += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
+
           variantQty = variantQty - itemQty
 
         if variantQty > 0
@@ -319,7 +355,7 @@ Shopify.Customizr = (($) ->
     updatePOST =
       type     : "POST"
       url      : "/cart/update.js"
-      data     : data
+      data     : data + customerData + "&"
       dataType : "json"
       success  : ->
         console.log arguments
@@ -334,12 +370,12 @@ Shopify.Customizr = (($) ->
     $.extend config, q or {}
     config.useNativeValidation = e("input", "required")  if config.useNativeValidation is null
     if window.location.pathname.indexOf("/products/") isnt -1
-      itemSpec = cookieStore.read()
+      itemSpec = localStore.read()
       $.ajaxSetup cache: false
       $.getJSON "/cart.js", (_cartInfo) ->
         if _cartInfo.item_count is 0
           itemSpec = {}
-          cookieStore.destroy()
+          localStore.destroy()
       
       $ ->
         config.useNativeValidation = false  if config.useNativeValidation and $("script[src*=ajax]").length
@@ -348,9 +384,8 @@ Shopify.Customizr = (($) ->
         onClickHandler        = $submitButton.attr("onclick")
 
         $submitButton.removeAttr "onclick"
-
-        $submitButton.click (u) ->
-          
+        event = if config.customEvent? then config.customEvent else 'click'
+        $submitButton.bind event, (u) ->
           variantId = $addToCartForm.find("[name=id]").val()
           itemQty   = parseInt($addToCartForm.find("[name=quantity]").val(), 10) or 1
           uniqueId  = (new Date()).getTime()
@@ -443,19 +478,31 @@ Shopify.Customizr = (($) ->
                     quantity    : itemQty
                     attributes  : attributes
 
-                cookieStore.write itemSpec
+                localStore.write itemSpec
 
               if typeof onClickHandler is "function"
                 onClickHandler.call()
-                false
+                if config.customEvent
+                  $submitButton.data('returnedValue', false)
+                else
+                  false
               else
-                true
+                if config.customEvent
+                  $submitButton.data('returnedValue', true)
+                else
+                  true
             else
               $("span.error :input:eq(0)").trigger "focus"
               if config.useNativeValidation
-                true
+                if config.customEvent
+                  $submitButton.data('returnedValue', true)
+                else
+                  true
               else
-                false
+                if config.customEvent
+                  $submitButton.data('returnedValue', false)
+                else
+                  false
   
   show: (_cartInfo, moneyFormat, shopCurrency = "USD", additionalConfig) ->
     
@@ -482,7 +529,7 @@ Shopify.Customizr = (($) ->
     if window.location.pathname is "/cart"
       # read the stored cookie 
       # i: itemSpecs
-      itemSpec = cookieStore.read()
+      itemSpec = localStore.read()
       
       # on page load
       $ ->
@@ -514,7 +561,7 @@ Shopify.Customizr = (($) ->
             # Delete this item
             itemSpec[variantId] = undefined
             # And Updates the cookie
-            cookieStore.write itemSpec
+            localStore.write itemSpec
             # Then go to next iteration
             continue
           
@@ -679,7 +726,7 @@ Shopify.Customizr = (($) ->
 
   clearAttributes: ->
 
-    cookieStore.destroy()
+    localStore.destroy()
     itemSpec = {}
   
 
@@ -692,7 +739,7 @@ Shopify.Customizr = (($) ->
   inspectAttributes: (u, s, q) ->
 
     t = (if typeof q == "string" then q else "  ")
-    r = JSON.stringify(cookieStore.read(), null, t)
+    r = JSON.stringify(localStore.read(), null, t)
     w = document.getElementById(u or "attributes-wrapper")
     if typeof w == "object"
       w.innerHTML = r

@@ -1,15 +1,13 @@
 (function() {
   /*
-  --------------------------------------------------------------
      * Cookie plugin
      *
      * Copyright (c) 2006 Klaus Hartl (stilbuero.de)
      * Dual licensed under the MIT and GPL licenses:
      * http://www.opensource.org/licenses/mit-license.php
      * http://www.gnu.org/licenses/gpl.html
-  --------------------------------------------------------------
   */
-  var CookieStore;
+  var CookieStore, LocalStore;
   jQuery.cookie = function(key, value, options) {
     var days, decode, result, t;
     if (arguments.length > 1 && String(value) !== "[object Object]") {
@@ -39,11 +37,6 @@
       return null;
     }
   };
-  /*
-  ----------------------------------------------
-      @String Utilities
-  ----------------------------------------------
-  */
   String.prototype.capitalizeFirstLetter = function() {
     return this.charAt(0).toUpperCase() + this.slice(1);
   };
@@ -51,7 +44,6 @@
     return this.replace(/#\d+;/g, "").replace(/[^\d,.]/g, "");
   };
   /*
-  --------------------------------------------------------------
       @CookieStore
   
       * Write and Read from the cookie
@@ -85,12 +77,50 @@
     return CookieStore;
   })();
   /*
+  --------------------------------------------------------------
+      @LocalStore
+  --------------------------------------------------------------
+  */
+  LocalStore = (function() {
+    function LocalStore(name) {
+      var cookieData, i, isEmpty, tempCookieStore;
+      this.name = name;
+      tempCookieStore = new CookieStore();
+      cookieData = tempCookieStore.read();
+      isEmpty = true;
+      for (i in cookieData) {
+        isEmpty = false;
+      }
+      if (!isEmpty) {
+        this.write(cookieData);
+      }
+      tempCookieStore.destroy();
+    }
+    LocalStore.prototype.write = function(itemSpec) {
+      return localStorage.setItem(this.name, JSON.stringify(itemSpec));
+    };
+    LocalStore.prototype.read = function() {
+      var localData, _itemSpec;
+      _itemSpec = {};
+      localData = localStorage.getItem(this.name);
+      if (localData != null) {
+        _itemSpec = JSON.parse(localData);
+      }
+      _itemSpec;
+      return JSON.parse(localStorage.getItem(this.name));
+    };
+    LocalStore.prototype.destroy = function() {
+      return localStorage.removeItem(this.name);
+    };
+    return LocalStore;
+  })();
+  /*
   ----------------------------------------------
       @Shopify.Cusomizr
   ----------------------------------------------
   */
   Shopify.Customizr = (function($) {
-    var a, calcSubTotal, checkCurrency, config, cookieStore, e, getLabel, isRequired, isToCheckOut, itemSpec, m, renderAttributes, updateCartInfo, updateQuantity, validateField;
+    var a, calcSubTotal, checkCurrency, config, e, getLabel, isRequired, isToCheckOut, itemSpec, localStore, m, renderAttributes, updateCartInfo, updateQuantity, validateField;
     config = {
       lineItemFormatInTemplatesPlainText: "%qx %t for %p each",
       labelFormatOnCartPage: "%s: ",
@@ -108,7 +138,7 @@
     itemSpec = {};
     isToCheckOut = false;
     m = false;
-    cookieStore = new CookieStore();
+    localStore = new LocalStore('shopify_product_customization');
     e = function(q, s) {
       var t, ua;
       if (s === "required") {
@@ -199,13 +229,16 @@
     isRequired = function(q) {
       return q.attr("required") || q.is(".required");
     };
-    renderAttributes = function(attributes, isForNote) {
+    renderAttributes = function(attributes, isForNote, isForCustomer) {
       var attr, s, _i, _len;
       if (isForNote == null) {
         isForNote = false;
       }
+      if (isForCustomer == null) {
+        isForCustomer = false;
+      }
       if (config.renderAttributes) {
-        return s = config.renderAttributes(attributes, isForNote);
+        return s = config.renderAttributes(attributes, isForNote, isForCustomer);
       } else {
         s = "";
         if (typeof attributes.length === "number") {
@@ -244,7 +277,7 @@
               itemSpec[variantId] = void 0;
             }
           }
-          cookieStore.write(itemSpec);
+          localStore.write(itemSpec);
           break;
         }
         _results.push(t++);
@@ -281,8 +314,9 @@
       return $("form[action=\"/cart\"]").attr("action", "/checkout").get(0).submit();
     };
     updateCartInfo = function(cartInfo) {
-      var data, updatePOST;
+      var customerData, data, updatePOST;
       data = "";
+      customerData = 'attributes[customer]=';
       $.each(cartInfo, function(variantId, w) {
         var formattedPrice, noDescriptorPrice, template, variantPrice, variantQty, variantTitle;
         if (itemSpec[variantId] !== void 0 && itemSpec[variantId].length > 0) {
@@ -299,6 +333,9 @@
             D = "<p>" + (renderAttributes(item.attributes, true)) + "</p>";
             D = "" + variantTitle + " " + ($(D).text());
             data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice);
+            D = "<p>" + (renderAttributes(item.attributes, true, true)) + "</p>";
+            D = "" + variantTitle + " " + ($(D).text());
+            customerData += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice);
             return variantQty = variantQty - itemQty;
           });
           if (variantQty > 0) {
@@ -312,7 +349,7 @@
       updatePOST = {
         type: "POST",
         url: "/cart/update.js",
-        data: data,
+        data: data + customerData + "&",
         dataType: "json",
         success: function() {
           console.log(arguments);
@@ -328,18 +365,18 @@
           config.useNativeValidation = e("input", "required");
         }
         if (window.location.pathname.indexOf("/products/") !== -1) {
-          itemSpec = cookieStore.read();
+          itemSpec = localStore.read();
           $.ajaxSetup({
             cache: false
           });
           $.getJSON("/cart.js", function(_cartInfo) {
             if (_cartInfo.item_count === 0) {
               itemSpec = {};
-              return cookieStore.destroy();
+              return localStore.destroy();
             }
           });
           return $(function() {
-            var $addToCartForm, $submitButton, onClickHandler;
+            var $addToCartForm, $submitButton, event, onClickHandler;
             if (config.useNativeValidation && $("script[src*=ajax]").length) {
               config.useNativeValidation = false;
             }
@@ -347,7 +384,8 @@
             $submitButton = $addToCartForm.find("input:submit, input:image");
             onClickHandler = $submitButton.attr("onclick");
             $submitButton.removeAttr("onclick");
-            return $submitButton.click(function(u) {
+            event = config.customEvent != null ? config.customEvent : 'click';
+            return $submitButton.bind(event, function(u) {
               var $formFields, attributes, isNewEntry, isValid, itemQty, uniqueId, variantId, z;
               variantId = $addToCartForm.find("[name=id]").val();
               itemQty = parseInt($addToCartForm.find("[name=quantity]").val(), 10) || 1;
@@ -424,20 +462,36 @@
                         attributes: attributes
                       });
                     }
-                    cookieStore.write(itemSpec);
+                    localStore.write(itemSpec);
                   }
                   if (typeof onClickHandler === "function") {
                     onClickHandler.call();
-                    return false;
+                    if (config.customEvent) {
+                      return $submitButton.data('returnedValue', false);
+                    } else {
+                      return false;
+                    }
                   } else {
-                    return true;
+                    if (config.customEvent) {
+                      return $submitButton.data('returnedValue', true);
+                    } else {
+                      return true;
+                    }
                   }
                 } else {
                   $("span.error :input:eq(0)").trigger("focus");
                   if (config.useNativeValidation) {
-                    return true;
+                    if (config.customEvent) {
+                      return $submitButton.data('returnedValue', true);
+                    } else {
+                      return true;
+                    }
                   } else {
-                    return false;
+                    if (config.customEvent) {
+                      return $submitButton.data('returnedValue', false);
+                    } else {
+                      return false;
+                    }
                   }
                 }
               }
@@ -469,7 +523,7 @@
         Shopify.money_format = moneyFormat || Shopify.money_format || "$ {{amount}}";
         Shopify.shop_currency = shopCurrency;
         if (window.location.pathname === "/cart") {
-          itemSpec = cookieStore.read();
+          itemSpec = localStore.read();
           return $(function() {
             var $clonedWrapper, $input, $inputWrapper, $liWrapper, $noCustomInput, $qtyInput, $subTotal, $trWrapper, $variantQtyInput, $wrapperTagName, additionalAttrDOM, formattedPrice, inputSelector, isCurrencySet, item, itemQty, items, removeLinkSelector, subTotalNumber, uniqueId, variantId, variantLinePrice, variantPrice, variantQty, variantTitle, _i, _len;
             $("input[name^=updates]").each(function() {
@@ -491,7 +545,7 @@
               $liWrapper = $input.parents("li");
               if ($trWrapper.add($liWrapper).length === 0) {
                 itemSpec[variantId] = void 0;
-                cookieStore.write(itemSpec);
+                localStore.write(itemSpec);
                 continue;
               }
               $inputWrapper = ($trWrapper.length ? $trWrapper : $liWrapper);
@@ -629,7 +683,7 @@
         return config;
       },
       clearAttributes: function() {
-        cookieStore.destroy();
+        localStore.destroy();
         return itemSpec = {};
       },
       /*
@@ -640,7 +694,7 @@
       inspectAttributes: function(u, s, q) {
         var r, t, v, w;
         t = (typeof q === "string" ? q : "  ");
-        r = JSON.stringify(cookieStore.read(), null, t);
+        r = JSON.stringify(localStore.read(), null, t);
         w = document.getElementById(u || "attributes-wrapper");
         if (typeof w === "object") {
           w.innerHTML = r;
