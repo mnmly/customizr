@@ -160,8 +160,8 @@ Shopify.Customizr = (($) ->
       * Returns label for input data
   --------------------------------------------------------------
   ###
-  #
-  getLabel = ($field) ->
+  
+  getLabel = ($field, formInstance) ->
     #Ex: t = <select name="design" data-label="Design"></select>
     # if t.attr('data-label') is set use that
     label = $field.attr("data-label")
@@ -170,7 +170,7 @@ Shopify.Customizr = (($) ->
     # Try to create label from for attribute
     fieldId = $field.attr("id")
     if fieldId
-      label = $.trim($("label[for=#{ fieldId }]").text().replace(":", ""))
+      label = $.trim($("label[for=#{ fieldId }]", formInstance).filter(":first").text().replace(":", ""))
       return label  if label
     
     # Try to create label from name attribute
@@ -327,7 +327,7 @@ Shopify.Customizr = (($) ->
         variantPrice       = w.price
         formattedPrice     = Shopify.formatMoney(variantPrice)
         noDescriptorPrice  = formattedPrice.removeCurrencyDescriptor()
-        data += "attributes[#{ variantTitle }]="
+        data += "attributes[#{ encodeURIComponent( variantTitle ) }]="
 
         $.each itemSpec[variantId], (C, item) ->
 
@@ -336,11 +336,11 @@ Shopify.Customizr = (($) ->
           # No idea why this is overriden...
           D = "<p>#{ renderAttributes(item.attributes, true) }</p>"
           D = "#{ variantTitle } #{ $(D).text() }"
-          data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
+          data += encodeURIComponent( template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice) )
           
           D = "<p>#{ renderAttributes(item.attributes, true, true) }</p>"
           D = "#{ variantTitle } #{ $(D).text() }"
-          customerData += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
+          customerData += encodeURIComponent( template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice) )
 
           variantQty = variantQty - itemQty
 
@@ -349,7 +349,7 @@ Shopify.Customizr = (($) ->
 
         data += "&"
       else
-        data += "attributes[#{variantTitle}]=&"
+        data += "attributes[#{encodeURIComponent( variantTitle )}]=&"
     
     # Cart update setup
     updatePOST =
@@ -364,32 +364,44 @@ Shopify.Customizr = (($) ->
     # Update it.
     $.ajax updatePOST
 
-
+  ##################
+  # START FROM HERE.
+  ##################
   attach: (q) ->
 
     $.extend config, q or {}
     config.useNativeValidation = e("input", "required")  if config.useNativeValidation is null
-    if window.location.pathname.indexOf("/products/") isnt -1
-      itemSpec = localStore.read()
-      $.ajaxSetup cache: false
-      $.getJSON "/cart.js", (_cartInfo) ->
-        if _cartInfo.item_count is 0
-          itemSpec = {}
-          localStore.destroy()
-      
-      $ ->
-        config.useNativeValidation = false  if config.useNativeValidation and $("script[src*=ajax]").length
-        $addToCartForm        = $("form[action=\"/cart/add\"]")
-        $submitButton         = $addToCartForm.find("input:submit, input:image")
-        onClickHandler        = $submitButton.attr("onclick")
+    
+    itemSpec = localStore.read()
+    $.ajaxSetup
+      cache: false
+
+    $.getJSON "/cart.js", (_cartInfo) ->
+      if _cartInfo.item_count is 0
+        itemSpec = {}
+        localStore.write(itemSpec)
+    
+    $ ->
+
+      if config.useNativeValidation and $("script[src*=ajax]").not('[src*="googleapis"]').size()
+        config.useNativeValidation = false
+
+      $("form[action=\"/cart/add\"]").each ->
+        $form           = $(this)
+        formInstance    = $form[0]
+        $submitButton   = $form.find("input:submit, input:image")
+        onClickHandler  = $submitButton.attr("onclick")
 
         $submitButton.removeAttr "onclick"
-        event = if config.customEvent? then config.customEvent else 'click'
-        $submitButton.bind event, (u) ->
-          variantId = $addToCartForm.find("[name=id]").val()
-          itemQty   = parseInt($addToCartForm.find("[name=quantity]").val(), 10) or 1
-          uniqueId  = (new Date()).getTime()
 
+
+        if typeof addToCart is 'function'
+          $submitButton.unbind 'click', addToCart
+        
+        $submitButton.click ->
+          variantId = $form.find("[name=id]").val()
+          itemQty   = parseInt($form.find("[name=quantity]").val(), 10) or 1
+          uniqueId  = (new Date()).getTime()
           isValid = true
 
           if variantId
@@ -399,7 +411,7 @@ Shopify.Customizr = (($) ->
             # If selector is not set
             if config.selector == null
               
-              $formFields = $addToCartForm.find("input:enabled, select:enabled")
+              $formFields = $form.find("input:enabled, select:enabled, textaea:enabled")
                 .not("input:submit")
                 .not("input:image")
                 .not("input:file")
@@ -411,8 +423,8 @@ Shopify.Customizr = (($) ->
             else
               $formFields = $(config.selector)
 
-            $formFields.each ->
-
+            $formFields.each (F)->
+            
               $field = $(this)
               value = ""
 
@@ -450,7 +462,7 @@ Shopify.Customizr = (($) ->
                       validateField $field
                     return
               
-              label = getLabel($field)
+              label = getLabel($field, formInstance)
 
               attributes.push
                 label: label
@@ -481,28 +493,20 @@ Shopify.Customizr = (($) ->
                 localStore.write itemSpec
 
               if typeof onClickHandler is "function"
-                onClickHandler.call()
-                if config.customEvent
-                  $submitButton.data('returnedValue', false)
-                else
-                  false
+                s.call()
+                false
               else
-                if config.customEvent
-                  $submitButton.data('returnedValue', true)
+                if typeof addToCart is 'function'
+                  addToCart.call($submitButton)
+                  return false
                 else
                   true
             else
               $("span.error :input:eq(0)").trigger "focus"
               if config.useNativeValidation
-                if config.customEvent
-                  $submitButton.data('returnedValue', true)
-                else
-                  true
+                true
               else
-                if config.customEvent
-                  $submitButton.data('returnedValue', false)
-                else
-                  false
+                false
   
   show: (_cartInfo, moneyFormat, shopCurrency = "USD", additionalConfig) ->
     
