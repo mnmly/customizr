@@ -1,27 +1,28 @@
+
+/*
+   * Cookie plugin
+   *
+   * Copyright (c) 2006 Klaus Hartl (stilbuero.de)
+   * Dual licensed under the MIT and GPL licenses:
+   * http://www.opensource.org/licenses/mit-license.php
+   * http://www.gnu.org/licenses/gpl.html
+*/
+
 (function() {
-  /*
-     * Cookie plugin
-     *
-     * Copyright (c) 2006 Klaus Hartl (stilbuero.de)
-     * Dual licensed under the MIT and GPL licenses:
-     * http://www.opensource.org/licenses/mit-license.php
-     * http://www.gnu.org/licenses/gpl.html
-  */
   var CookieStore, LocalStore;
+
   jQuery.cookie = function(key, value, options) {
     var days, decode, result, t;
     if (arguments.length > 1 && String(value) !== "[object Object]") {
       options = jQuery.extend({}, options);
-      if (value === null || value === void 0) {
-        options.expires = -1;
-      }
+      if (value === null || value === void 0) options.expires = -1;
       if (typeof options.expires === "number") {
         days = options.expires;
         t = options.expires = new Date();
         t.setDate(t.getDate() + days);
       }
       value = String(value);
-      return document.cookie = [encodeURIComponent(key), "=", (options.raw ? value : encodeURIComponent(value)), (options.expires ? "; expires=" + options.expires.toUTCString() : ""), (options.path ? "; path=" + options.path : ""), (options.domain ? "; domain=" + options.domain : ""), (options.secure ? "; secure" : "")].join("");
+      return (document.cookie = [encodeURIComponent(key), "=", (options.raw ? value : encodeURIComponent(value)), (options.expires ? "; expires=" + options.expires.toUTCString() : ""), (options.path ? "; path=" + options.path : ""), (options.domain ? "; domain=" + options.domain : ""), (options.secure ? "; secure" : "")].join(""));
     }
     options = value || {};
     if (options.raw) {
@@ -37,51 +38,63 @@
       return null;
     }
   };
+
   String.prototype.capitalizeFirstLetter = function() {
     return this.charAt(0).toUpperCase() + this.slice(1);
   };
+
   String.prototype.removeCurrencyDescriptor = function() {
     return this.replace(/#\d+;/g, "").replace(/[^\d,.]/g, "");
   };
+
   /*
       @CookieStore
   
       * Write and Read from the cookie
   --------------------------------------------------------------
   */
+
   CookieStore = (function() {
     var _config;
+
     _config = {
       expires: 90,
       path: "/",
       domain: window.location.hostname
     };
+
     function CookieStore(name) {
       this.name = name != null ? name : "shopify_product_customization";
     }
+
     CookieStore.prototype.write = function(itemSpec) {
       return $.cookie(this.name, JSON.stringify(itemSpec), _config);
     };
+
     CookieStore.prototype.read = function() {
       var cookieData, _itemSpec;
       _itemSpec = {};
       cookieData = $.cookie(this.name);
-      if (cookieData != null) {
-        _itemSpec = JSON.parse(cookieData);
-      }
+      if (cookieData != null) _itemSpec = JSON.parse(cookieData);
       return _itemSpec;
     };
+
     CookieStore.prototype.destroy = function() {
       return $.cookie(this.name, null, _config);
     };
+
     return CookieStore;
+
   })();
+
   /*
   --------------------------------------------------------------
       @LocalStore
   --------------------------------------------------------------
   */
+
   LocalStore = (function() {
+
     function LocalStore(name) {
       var cookieData, i, isEmpty, tempCookieStore;
       this.name = name;
@@ -91,34 +104,37 @@
       for (i in cookieData) {
         isEmpty = false;
       }
-      if (!isEmpty) {
-        this.write(cookieData);
-      }
+      if (!isEmpty) this.write(cookieData);
       tempCookieStore.destroy();
     }
+
     LocalStore.prototype.write = function(itemSpec) {
       return localStorage.setItem(this.name, JSON.stringify(itemSpec));
     };
+
     LocalStore.prototype.read = function() {
       var localData, _itemSpec;
       _itemSpec = {};
       localData = localStorage.getItem(this.name);
-      if (localData != null) {
-        _itemSpec = JSON.parse(localData);
-      }
+      if (localData != null) _itemSpec = JSON.parse(localData);
       _itemSpec;
       return JSON.parse(localStorage.getItem(this.name));
     };
+
     LocalStore.prototype.destroy = function() {
       return localStorage.removeItem(this.name);
     };
+
     return LocalStore;
+
   })();
+
   /*
   ----------------------------------------------
       @Shopify.Cusomizr
   ----------------------------------------------
   */
+
   Shopify.Customizr = (function($) {
     var a, calcSubTotal, checkCurrency, config, e, getLabel, isRequired, isToCheckOut, itemSpec, localStore, m, renderAttributes, updateCartInfo, updateQuantity, validateField;
     config = {
@@ -143,12 +159,8 @@
       var t, ua;
       if (s === "required") {
         ua = navigator.userAgent.toLowerCase();
-        if (ua.indexOf('chrome') !== -1) {
-          return true;
-        }
-        if (ua.indexOf("safari") !== -1) {
-          return false;
-        }
+        if (ua.indexOf('chrome') !== -1) return true;
+        if (ua.indexOf("safari") !== -1) return false;
       }
       t = document.createElement(q);
       if (s in t) {
@@ -162,19 +174,15 @@
           @getLabel(inputFiele)
           * Returns label for input data
       --------------------------------------------------------------
-      */
-    getLabel = function($field) {
+    */
+    getLabel = function($field, formInstance) {
       var fieldId, fieldName, label, q;
       label = $field.attr("data-label");
-      if (label) {
-        return label;
-      }
+      if (label) return label;
       fieldId = $field.attr("id");
       if (fieldId) {
-        label = $.trim($("label[for=" + fieldId + "]").text().replace(":", ""));
-        if (label) {
-          return label;
-        }
+        label = $.trim($("label[for=" + fieldId + "]", formInstance).filter(":first").text().replace(":", ""));
+        if (label) return label;
       }
       fieldName = $field.attr("name");
       q = fieldName.match(/attributes\[([\w-]+)\]/);
@@ -193,7 +201,7 @@
           validateField
           * Append required message on error
       --------------------------------------------------------------
-      */
+    */
     validateField = function(field) {
       var requiredMessage;
       if (config.useNativeValidation) {
@@ -231,12 +239,8 @@
     };
     renderAttributes = function(attributes, isForNote, isForCustomer) {
       var attr, s, _i, _len;
-      if (isForNote == null) {
-        isForNote = false;
-      }
-      if (isForCustomer == null) {
-        isForCustomer = false;
-      }
+      if (isForNote == null) isForNote = false;
+      if (isForCustomer == null) isForCustomer = false;
       if (config.renderAttributes) {
         return s = config.renderAttributes(attributes, isForNote, isForCustomer);
       } else {
@@ -259,7 +263,7 @@
           @updateQuantity
           change the quantity of the cookie and input val
       --------------------------------------------------------------
-      */
+    */
     updateQuantity = function(variantId, uniqueId, updatedQty, $input) {
       var changeInQty, currentQty, itemQty, t, _results;
       t = 0;
@@ -273,9 +277,7 @@
           $input.val(currentQty + changeInQty);
           if (updatedQty === 0) {
             itemSpec[variantId].splice(t, 1);
-            if (itemSpec[variantId].length === 0) {
-              itemSpec[variantId] = void 0;
-            }
+            if (itemSpec[variantId].length === 0) itemSpec[variantId] = void 0;
           }
           localStore.write(itemSpec);
           break;
@@ -326,16 +328,16 @@
           variantPrice = w.price;
           formattedPrice = Shopify.formatMoney(variantPrice);
           noDescriptorPrice = formattedPrice.removeCurrencyDescriptor();
-          data += "attributes[" + variantTitle + "]=";
+          data += "attributes[" + (encodeURIComponent(variantTitle)) + "]=";
           $.each(itemSpec[variantId], function(C, item) {
             var D, itemQty;
             itemQty = item.quantity;
             D = "<p>" + (renderAttributes(item.attributes, true)) + "</p>";
             D = "" + variantTitle + " " + ($(D).text());
-            data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice);
+            data += encodeURIComponent(template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice));
             D = "<p>" + (renderAttributes(item.attributes, true, true)) + "</p>";
             D = "" + variantTitle + " " + ($(D).text());
-            customerData += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice);
+            customerData += encodeURIComponent(template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice));
             return variantQty = variantQty - itemQty;
           });
           if (variantQty > 0) {
@@ -343,7 +345,7 @@
           }
           return data += "&";
         } else {
-          return data += "attributes[" + variantTitle + "]=&";
+          return data += "attributes[" + (encodeURIComponent(variantTitle)) + "]=&";
         }
       });
       updatePOST = {
@@ -364,41 +366,44 @@
         if (config.useNativeValidation === null) {
           config.useNativeValidation = e("input", "required");
         }
-        if (window.location.pathname.indexOf("/products/") !== -1) {
-          itemSpec = localStore.read();
-          $.ajaxSetup({
-            cache: false
-          });
-          $.getJSON("/cart.js", function(_cartInfo) {
-            if (_cartInfo.item_count === 0) {
-              itemSpec = {};
-              return localStore.destroy();
-            }
-          });
-          return $(function() {
-            var $addToCartForm, $submitButton, event, onClickHandler;
-            if (config.useNativeValidation && $("script[src*=ajax]").length) {
-              config.useNativeValidation = false;
-            }
-            $addToCartForm = $("form[action=\"/cart/add\"]");
-            $submitButton = $addToCartForm.find("input:submit, input:image");
+        itemSpec = localStore.read();
+        $.ajaxSetup({
+          cache: false
+        });
+        $.getJSON("/cart.js", function(_cartInfo) {
+          if (_cartInfo.item_count === 0) {
+            itemSpec = {};
+            return localStore.write(itemSpec);
+          }
+        });
+        return $(function() {
+          if (config.useNativeValidation && $("script[src*=ajax]").not('[src*="googleapis"]').size()) {
+            config.useNativeValidation = false;
+          }
+          return $("form[action=\"/cart/add\"]").each(function() {
+            var $form, $submitButton, formInstance, onClickHandler;
+            $form = $(this);
+            formInstance = $form[0];
+            $submitButton = $form.find("input:submit, input:image");
             onClickHandler = $submitButton.attr("onclick");
             $submitButton.removeAttr("onclick");
-            event = config.customEvent != null ? config.customEvent : 'click';
-            return $submitButton.bind(event, function(u) {
+            if (typeof addToCart === 'function') {
+              $submitButton.unbind('click', addToCart);
+            }
+            return $submitButton.click(function() {
               var $formFields, attributes, isNewEntry, isValid, itemQty, uniqueId, variantId, z;
-              variantId = $addToCartForm.find("[name=id]").val();
-              itemQty = parseInt($addToCartForm.find("[name=quantity]").val(), 10) || 1;
+              variantId = $form.find("[name=id]").val();
+              itemQty = parseInt($form.find("[name=quantity]").val(), 10) || 1;
               uniqueId = (new Date()).getTime();
               isValid = true;
               if (variantId) {
                 attributes = [];
                 if (config.selector === null) {
-                  $formFields = $addToCartForm.find("input:enabled, select:enabled").not("input:submit").not("input:image").not("input:file").not("[name^=\"id\"]").not("[name=\"quantity\"]").not(".single-option-selector").not(".ignore");
+                  $formFields = $form.find("input:enabled, select:enabled, textaea:enabled").not("input:submit").not("input:image").not("input:file").not("[name^=\"id\"]").not("[name=\"quantity\"]").not(".single-option-selector").not(".ignore");
                 } else {
                   $formFields = $(config.selector);
                 }
-                $formFields.each(function() {
+                $formFields.each(function(F) {
                   var $field, label, value;
                   $field = $(this);
                   value = "";
@@ -419,9 +424,7 @@
                     if ($field.is(":radio")) {
                       if ($field.is(":checked")) {
                         value = $field.val();
-                        if (value === '') {
-                          return;
-                        }
+                        if (value === '') return;
                       } else {
                         return;
                       }
@@ -436,7 +439,7 @@
                       }
                     }
                   }
-                  label = getLabel($field);
+                  label = getLabel($field, formInstance);
                   return attributes.push({
                     label: label,
                     value: value
@@ -465,15 +468,12 @@
                     localStore.write(itemSpec);
                   }
                   if (typeof onClickHandler === "function") {
-                    onClickHandler.call();
-                    if (config.customEvent) {
-                      return $submitButton.data('returnedValue', false);
-                    } else {
-                      return false;
-                    }
+                    s.call();
+                    return false;
                   } else {
-                    if (config.customEvent) {
-                      return $submitButton.data('returnedValue', true);
+                    if (typeof addToCart === 'function') {
+                      addToCart.call($submitButton);
+                      return false;
                     } else {
                       return true;
                     }
@@ -481,29 +481,19 @@
                 } else {
                   $("span.error :input:eq(0)").trigger("focus");
                   if (config.useNativeValidation) {
-                    if (config.customEvent) {
-                      return $submitButton.data('returnedValue', true);
-                    } else {
-                      return true;
-                    }
+                    return true;
                   } else {
-                    if (config.customEvent) {
-                      return $submitButton.data('returnedValue', false);
-                    } else {
-                      return false;
-                    }
+                    return false;
                   }
                 }
               }
             });
           });
-        }
+        });
       },
       show: function(_cartInfo, moneyFormat, shopCurrency, additionalConfig) {
         var cartInfo, items;
-        if (shopCurrency == null) {
-          shopCurrency = "USD";
-        }
+        if (shopCurrency == null) shopCurrency = "USD";
         $.extend(config, additionalConfig || {});
         cartInfo = {};
         if (typeof _cartInfo.total_price === 'number') {
@@ -574,7 +564,7 @@
                     /*
                                       Keeps the rest of the handlers from being executed
                                       and prevents the event from bubbling up the DOM tree.
-                                    */
+                    */
                     var originalQtyInput, updatedQty;
                     e.stopImmediatePropagation();
                     variantId = e.data.variantId;
@@ -665,9 +655,7 @@
               return isToCheckOut = true;
             });
             return $("form[action=\"/cart\"]").submit(function(e) {
-              if (m) {
-                return false;
-              }
+              if (m) return false;
               if (isToCheckOut) {
                 e.preventDefault();
                 m = true;
@@ -690,7 +678,7 @@
         --------------------------------------------------------------
             @Inspector
         --------------------------------------------------------------
-        */
+      */
       inspectAttributes: function(u, s, q) {
         var r, t, v, w;
         t = (typeof q === "string" ? q : "  ");
@@ -701,11 +689,10 @@
           w.style.display = "block";
         }
         v = document.getElementById(s || "hide-attributes");
-        if (typeof v === "object") {
-          v.style.display = "inline";
-        }
+        if (typeof v === "object") v.style.display = "inline";
         return r;
       }
     };
   })(jQuery);
+
 }).call(this);

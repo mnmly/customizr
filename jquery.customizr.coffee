@@ -136,7 +136,7 @@ Shopify.Customizr = (($) ->
   # Setting up cookie
   localStore = new LocalStore('shopify_product_customization')
 
-  # Checking something...
+  # Checking something... No idea...
   e = (q, s) ->
 
     if s == "required"
@@ -358,15 +358,11 @@ Shopify.Customizr = (($) ->
       data     : data + customerData + "&"
       dataType : "json"
       success  : ->
-        console.log arguments
         $("form[action=\"/cart\"]").attr("action", "/checkout").get(0).submit()
 
     # Update it.
     $.ajax updatePOST
 
-  ##################
-  # START FROM HERE.
-  ##################
   attach: (q) ->
 
     $.extend config, q or {}
@@ -393,7 +389,6 @@ Shopify.Customizr = (($) ->
         onClickHandler  = $submitButton.attr("onclick")
 
         $submitButton.removeAttr "onclick"
-
 
         if typeof addToCart is 'function'
           $submitButton.unbind 'click', addToCart
