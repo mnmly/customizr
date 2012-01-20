@@ -336,11 +336,11 @@ Shopify.Customizr = (($) ->
           # No idea why this is overriden...
           D = "<p>#{ renderAttributes(item.attributes, true) }</p>"
           D = "#{ variantTitle } #{ $(D).text() }"
-          data += encodeURIComponent( template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice) )
+          data += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
           
           D = "<p>#{ renderAttributes(item.attributes, true, true) }</p>"
           D = "#{ variantTitle } #{ $(D).text() }"
-          customerData += encodeURIComponent( template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice) )
+          customerData += template.replace("%q", itemQty).replace("%t", D).replace("%p", noDescriptorPrice)
 
           variantQty = variantQty - itemQty
 
